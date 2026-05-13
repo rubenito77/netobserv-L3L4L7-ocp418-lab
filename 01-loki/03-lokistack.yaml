@@ -1,0 +1,39 @@
+---
+# Secret con credenciales S3 apuntando a MinIO (lab)
+# Para prod: reemplazar endpoint, access_key_id y access_key_secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: loki-s3-secret
+  namespace: netobserv
+stringData:
+  access_key_id: minioadmin
+  access_key_secret: minioadmin
+  bucketnames: loki
+  endpoint: http://minio.minio.svc.cluster.local:9000
+  region: us-east-1
+---
+# LokiStack en tamaño 1x.extra-small — adecuado para lab
+# Para producción usar 1x.small o mayor según volumen de tráfico
+apiVersion: loki.grafana.com/v1
+kind: LokiStack
+metadata:
+  name: loki
+  namespace: netobserv
+spec:
+  size: 1x.extra-small
+  storage:
+    schemas:
+    - effectiveDate: "2024-01-01"
+      version: v13
+    secret:
+      name: loki-s3-secret
+      type: s3
+  storageClassName: gp3-csi        # AJUSTAR a la StorageClass disponible en tu lab
+                                   # Verificar con: oc get sc
+  tenants:
+    mode: openshift-network         # Modo requerido para Network Observability
+  limits:
+    global:
+      retention:
+        days: 3                     # Retención corta para lab (ahorrar espacio)

@@ -1,0 +1,13 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: beyla-metrics
+  namespace: beyla
+spec:
+  to:
+    kind: Service
+    name: beyla-metrics
+  port:
+    targetPort: 9090
+  tls:
+    termination: edge

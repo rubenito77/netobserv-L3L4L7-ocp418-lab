@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: beyla-config
+  namespace: beyla
+data:
+  beyla-config.yaml: |
+    log_level: debug
+
+    discovery:
+      services:
+        - k8s_namespace: "demo-app"
+
+    attributes:
+      kubernetes:
+        enable: true
+        cluster_name: ocp-lab
+
+    prometheus_export:
+      port: 9090
+      path: /metrics
+      features:
+        - application
+        - application_process
+        - application_service_graph
+
+    network:
+      exclude:
+        - beyla
+        - netobserv
+        - openshift-monitoring

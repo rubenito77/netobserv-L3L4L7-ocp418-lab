@@ -1,0 +1,123 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-generator-http
+  namespace: demo-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: traffic-generator-http
+  template:
+    metadata:
+      labels:
+        app: traffic-generator-http
+    spec:
+      containers:
+      - name: generator
+        image: curlimages/curl:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "HTTP traffic generator iniciado"
+          while true; do
+            curl -s http://demo-api:8080/get > /dev/null
+            curl -s http://demo-api:8080/headers > /dev/null
+            curl -s http://demo-api:8080/uuid > /dev/null
+            sleep 0.2
+          done
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-generator-burst
+  namespace: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-generator-burst
+  template:
+    metadata:
+      labels:
+        app: traffic-generator-burst
+    spec:
+      containers:
+      - name: burst
+        image: curlimages/curl:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Burst traffic generator iniciado"
+          while true; do
+            for i in $(seq 1 50); do
+              curl -s http://demo-api:8080/get > /dev/null &
+              curl -s http://demo-api:8080/delay/1 > /dev/null &
+            done
+            wait
+            sleep 5
+          done
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-generator-errors
+  namespace: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-generator-errors
+  template:
+    metadata:
+      labels:
+        app: traffic-generator-errors
+    spec:
+      containers:
+      - name: errors
+        image: curlimages/curl:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Error traffic generator iniciado"
+          while true; do
+            curl -s http://demo-api:8080/status/404 > /dev/null
+            curl -s http://demo-api:8080/status/500 > /dev/null
+            sleep 0.5
+          done
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-generator-internal
+  namespace: demo-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: traffic-generator-internal
+  template:
+    metadata:
+      labels:
+        app: traffic-generator-internal
+    spec:
+      containers:
+      - name: internal
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          echo "Internal traffic generator iniciado"
+          while true; do
+            wget -qO- http://demo-api:8080/get > /dev/null
+            wget -qO- http://demo-api:8080/uuid > /dev/null
+            sleep 0.1
+          done

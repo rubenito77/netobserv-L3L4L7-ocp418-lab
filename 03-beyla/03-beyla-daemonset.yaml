@@ -1,0 +1,135 @@
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: beyla
+  namespace: beyla
+  labels:
+    app: beyla
+spec:
+  selector:
+    matchLabels:
+      app: beyla
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: beyla
+      annotations:
+        # Prometheus scraping del propio Beyla
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: beyla
+      hostPID: true              # Requerido: Beyla necesita ver PIDs del host
+
+      # Tolerations para que corra en nodos master también (opcional en lab)
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+
+      containers:
+      - name: beyla
+        image: grafana/beyla:latest   # Pin a versión específica en producción: grafana/beyla:2.x.x
+        imagePullPolicy: Always
+
+        securityContext:
+          privileged: true           # Requerido para cargar programas eBPF en el kernel
+          runAsUser: 0
+
+        env:
+        - name: BEYLA_CONFIG_PATH
+          value: /etc/beyla/beyla-config.yaml
+
+        # Node name para metadata de métricas
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+
+        # Namespace del pod para metadata
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+
+        ports:
+        - name: prometheus
+          containerPort: 9090
+          protocol: TCP
+
+        resources:
+          requests:
+            memory: 80Mi
+            cpu: 100m
+          limits:
+            memory: 400Mi
+            cpu: "2"               # Headroom para picos de tráfico alto
+
+        volumeMounts:
+        - name: config
+          mountPath: /etc/beyla
+          readOnly: true
+        - name: sys
+          mountPath: /sys
+          readOnly: true
+
+        # Liveness probe básico
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          failureThreshold: 3
+
+      volumes:
+      - name: config
+        configMap:
+          name: beyla-config
+      - name: sys
+        hostPath:
+          path: /sys
+---
+# Service para que Prometheus pueda scrapear Beyla
+apiVersion: v1
+kind: Service
+metadata:
+  name: beyla-metrics
+  namespace: beyla
+  labels:
+    app: beyla
+spec:
+  selector:
+    app: beyla
+  ports:
+  - name: prometheus
+    port: 9090
+    targetPort: 9090
+  clusterIP: None               # Headless: scraping directo a cada pod del DaemonSet
+---
+# ServiceMonitor para que el Prometheus de OCP scrapeé Beyla automáticamente
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: beyla
+  namespace: beyla
+  labels:
+    app: beyla
+spec:
+  selector:
+    matchLabels:
+      app: beyla
+  endpoints:
+  - port: prometheus
+    path: /metrics
+    interval: 30s
+    scheme: http

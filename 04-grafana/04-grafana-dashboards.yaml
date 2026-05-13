@@ -1,0 +1,203 @@
+---
+# Dashboard de Beyla RED metrics
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: beyla-red-metrics
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
+  grafanaCom:
+    id: 19923
+    revision: 3
+
+---
+# Dashboard inline de NetObserv — L3/L4
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: netobserv-flows-inline
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
+  json: |
+    {
+      "title": "NetObserv - Flujos de red L3/L4",
+      "uid": "netobserv-flows-inline",
+      "tags": ["netobserv", "network", "ocp"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Egress bytes por namespace origen",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-OCP"},
+          "targets": [
+            {
+              "expr": "sum(rate(netobserv_workload_egress_bytes_total{SrcK8S_Namespace!~\"openshift-.*|netobserv|beyla\"}[5m])) by (SrcK8S_Namespace)",
+              "legendFormat": "{{SrcK8S_Namespace}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Ingress bytes por namespace destino",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-OCP"},
+          "targets": [
+            {
+              "expr": "sum(rate(netobserv_workload_ingress_bytes_total{DstK8S_Namespace!~\"openshift-.*|netobserv|beyla\"}[5m])) by (DstK8S_Namespace)",
+              "legendFormat": "{{DstK8S_Namespace}}"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Egress packets por namespace origen",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-OCP"},
+          "targets": [
+            {
+              "expr": "sum(rate(netobserv_workload_egress_packets_total{SrcK8S_Namespace!~\"openshift-.*|netobserv|beyla\"}[5m])) by (SrcK8S_Namespace)",
+              "legendFormat": "{{SrcK8S_Namespace}}"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Ingress packets por namespace destino",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-OCP"},
+          "targets": [
+            {
+              "expr": "sum(rate(netobserv_workload_ingress_packets_total{DstK8S_Namespace!~\"openshift-.*|netobserv|beyla\"}[5m])) by (DstK8S_Namespace)",
+              "legendFormat": "{{DstK8S_Namespace}}"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Top namespaces por tráfico egress",
+          "type": "bargauge",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-OCP"},
+          "targets": [
+            {
+              "expr": "topk(10, sum(rate(netobserv_workload_egress_bytes_total{SrcK8S_Namespace!~\"openshift-.*|netobserv|beyla\"}[5m])) by (SrcK8S_Namespace))",
+              "legendFormat": "{{SrcK8S_Namespace}}"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Dropped packets por nodo",
+          "type": "stat",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-OCP"},
+          "targets": [
+            {
+              "expr": "sum(increase(netobserv_node_dropped_packets_total[5m])) by (node)",
+              "legendFormat": "{{node}}"
+            }
+          ]
+        }
+      ]
+    }
+
+---
+# Dashboard personalizado combinando Beyla L7 + NetObserv L3/L4
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: ocp-observabilidad-combinada
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
+  json: |
+    {
+      "title": "OCP - Observabilidad L3/L4/L7 combinada",
+      "uid": "ocp-l3-l7",
+      "tags": ["netobserv", "beyla", "ocp"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Rate de requests HTTP por servicio (Beyla L7)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_body_size_bytes_count{service_name=\"demo-api\"}[5m])) by (http_route)",
+              "legendFormat": "{{http_route}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Error rate HTTP (4xx/5xx) por servicio (Beyla L7)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_body_size_bytes_count{service_name=\"demo-api\",http_response_status_code=~\"4..|5..\"}[5m])) by (http_response_status_code)",
+              "legendFormat": "{{http_response_status_code}}"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Latencia p99 por endpoint (Beyla L7)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{service_name=\"demo-api\"}[5m])) by (le, http_route))",
+              "legendFormat": "p99 {{http_route}}"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Bytes de red por namespace origen (NetObserv L3/L4)",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-OCP"},
+          "targets": [
+            {
+              "expr": "sum(rate(netobserv_workload_egress_bytes_total{SrcK8S_Namespace!~\"openshift-.*|netobserv|beyla\"}[5m])) by (SrcK8S_Namespace)",
+              "legendFormat": "{{SrcK8S_Namespace}}"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Paquetes descartados por nodo (NetObserv L3/L4)",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 24, "x": 0, "y": 16},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-OCP"},
+          "targets": [
+            {
+              "expr": "sum(increase(netobserv_node_dropped_packets_total[5m])) by (node)",
+              "legendFormat": "{{node}}"
+            }
+          ]
+        }
+      ]
+    }

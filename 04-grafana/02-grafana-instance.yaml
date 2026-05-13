@@ -1,0 +1,83 @@
+---
+# Instancia de Grafana
+apiVersion: grafana.integreatly.org/v1beta1
+kind: Grafana
+metadata:
+  name: grafana
+  namespace: grafana
+  labels:
+    dashboards: grafana
+spec:
+  config:
+    log:
+      mode: console
+      level: info
+    auth:
+      disable_login_form: "false"
+    security:
+      admin_user: admin
+      admin_password: grafana-lab
+    feature_toggles:
+      enable: publicDashboards
+  deployment:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: grafana
+            resources:
+              requests:
+                memory: 128Mi
+                cpu: 100m
+              limits:
+                memory: 512Mi
+
+---
+# Route para acceder a Grafana desde el exterior
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: grafana
+  namespace: grafana
+spec:
+  to:
+    kind: Service
+    name: grafana-service
+  port:
+    targetPort: grafana
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+---
+# ClusterRole para que Grafana pueda leer métricas de Prometheus de OCP
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: grafana-proxy
+rules:
+- apiGroups: [""]
+  resources:
+  - namespaces
+  - pods
+  - services
+  - endpoints
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["monitoring.coreos.com"]
+  resources:
+  - prometheuses
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: grafana-proxy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: grafana-proxy
+subjects:
+- kind: ServiceAccount
+  name: grafana-sa
+  namespace: grafana

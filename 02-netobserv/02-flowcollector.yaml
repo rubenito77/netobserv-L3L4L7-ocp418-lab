@@ -1,0 +1,92 @@
+---
+# FlowCollector — recurso cluster-wide, solo puede existir uno y debe llamarse "cluster"
+# Documentación: https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/network_observability/
+apiVersion: flows.netobserv.io/v1beta2
+kind: FlowCollector
+metadata:
+  name: cluster
+spec:
+  namespace: netobserv
+
+  # Modelo de despliegue directo (sin Kafka)
+  # Para clusters grandes con mucho tráfico, cambiar a Kafka
+  deploymentModel: Direct
+
+  agent:
+    type: eBPF
+    ebpf:
+      # Sampling: 1 de cada N paquetes capturado
+      # 50 = default (buen balance lab/prod)
+      # 1  = todo el tráfico (solo para troubleshooting puntual, alto consumo)
+      # 100 = más liviano, menos granularidad
+      sampling: 50
+
+      logLevel: info
+      privileged: false            # false con OVN-K normal (default OCP 4.18)
+
+      # Interfaces excluidas (loopback siempre excluido)
+      excludeInterfaces:
+        - lo
+
+      # Recursos del agente eBPF (DaemonSet, un pod por nodo)
+      resources:
+        requests:
+          memory: 50Mi
+          cpu: 100m
+        limits:
+          memory: 800Mi
+          cpu: "1"
+
+      # Cache: controla frecuencia de reporte de flujos
+      # Mayor cacheMaxFlows = menos tráfico generado por el agente, más memoria
+      cacheMaxFlows: 100000
+      cacheActiveTimeout: 5s
+
+  processor:
+    logLevel: info
+    resources:
+      requests:
+        memory: 100Mi
+        cpu: 100m
+      limits:
+        memory: 800Mi
+        cpu: "1"
+    # Tipos de log a capturar: FLOWS, DROPPED, ALL
+    logTypes: Flows
+
+  loki:
+    enable: true
+    mode: LokiStack
+    lokiStack:
+      name: loki
+      namespace: netobserv
+
+  # Plugin de consola OCP — agrega "Network Traffic" en Observe
+  consolePlugin:
+    enable: true
+    register: true
+    logLevel: info
+    portNaming:
+      enable: true
+      portNames:
+        "3100": loki
+        "9090": prometheus
+        "8080": http-alt
+        "8443": https-alt
+        "5432": postgresql
+        "6379": redis
+        "27017": mongodb
+
+    # Filtros rápidos en la consola — personalizar según tu entorno
+    quickFilters:
+    - name: Aplicaciones
+      filter:
+        src_namespace!: 'openshift-,netobserv,kube-'
+        dst_namespace!: 'openshift-,netobserv,kube-'
+      default: true
+    - name: Infraestructura
+      filter:
+        src_namespace: 'openshift-,netobserv,kube-'
+    - name: Tráfico descartado
+      filter:
+        pkt_drop_state!: ''

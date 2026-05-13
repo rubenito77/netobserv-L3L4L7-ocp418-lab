@@ -1,0 +1,70 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: beyla
+  namespace: beyla
+---
+# SecurityContextConstraints para OCP — permite hostPID y privileged
+# Necesario porque Beyla necesita ver procesos del host para eBPF uprobes
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: beyla-scc
+allowHostPID: true
+allowHostNetwork: false
+allowHostIPC: false
+allowHostDirVolumePlugin: true
+allowPrivilegedContainer: true
+allowPrivilegeEscalation: true
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+fsGroup:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+volumes:
+- hostPath
+- configMap
+- secret
+- emptyDir
+users:
+- system:serviceaccount:beyla:beyla
+groups: []
+---
+# ClusterRole para que Beyla pueda leer metadata de pods/namespaces/servicios
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: beyla
+rules:
+- apiGroups: [""]
+  resources:
+  - pods
+  - nodes
+  - namespaces
+  - services
+  - endpoints
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources:
+  - deployments
+  - replicasets
+  - daemonsets
+  - statefulsets
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: beyla
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: beyla
+subjects:
+- kind: ServiceAccount
+  name: beyla
+  namespace: beyla

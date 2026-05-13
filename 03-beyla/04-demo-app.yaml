@@ -1,0 +1,101 @@
+---
+# Aplicación demo para verificar que Beyla captura métricas L7
+# httpbin expone endpoints HTTP reales: /get, /headers, /status/500, /delay/1
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-app
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-api
+  namespace: demo-app
+  labels:
+    app: demo-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: demo-api
+  template:
+    metadata:
+      labels:
+        app: demo-api
+      annotations:
+        beyla.grafana.com/instrument: "true"
+        beyla.grafana.com/service-name: "demo-api"
+    spec:
+      containers:
+      - name: demo-api
+        image: mccutchen/go-httpbin:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 50m
+          limits:
+            memory: 256Mi
+            cpu: 250m
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api
+  namespace: demo-app
+spec:
+  selector:
+    app: demo-api
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: demo-api
+  namespace: demo-app
+spec:
+  to:
+    kind: Service
+    name: demo-api
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+---
+# Job generador de tráfico para poblar métricas L7 reales
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: traffic-generator
+  namespace: demo-app
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: generator
+        image: curlimages/curl:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Iniciando generador de tráfico contra httpbin demo-api..."
+          while true; do
+            curl -s http://demo-api:8080/get -o /dev/null
+            curl -s http://demo-api:8080/headers -o /dev/null
+            curl -s http://demo-api:8080/uuid -o /dev/null
+            curl -s http://demo-api:8080/status/404 -o /dev/null
+            curl -s http://demo-api:8080/status/500 -o /dev/null
+            curl -s http://demo-api:8080/delay/1 -o /dev/null
+            sleep 1
+          done

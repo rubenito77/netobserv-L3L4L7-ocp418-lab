@@ -1,0 +1,61 @@
+---
+# Datasource: Prometheus OCP / Thanos
+# Reemplazar REPLACE_PROM_TOKEN antes de aplicar:
+# TOKEN=$(oc create token grafana-sa -n grafana --duration=8760h)
+# sed -i "s|REPLACE_PROM_TOKEN|$TOKEN|g" 04-grafana/03-grafana-datasources.yaml
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: prometheus-ocp
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
+
+  datasource:
+    uid: Prometheus-OCP
+    name: Prometheus-OCP
+    type: prometheus
+    access: proxy
+    url: https://thanos-querier.openshift-monitoring.svc.cluster.local:9091
+    isDefault: true
+    editable: true
+
+    jsonData:
+      timeInterval: 30s
+      tlsSkipVerify: true
+      httpHeaderName1: Authorization
+
+    secureJsonData:
+      httpHeaderValue1: "Bearer REPLACE_PROM_TOKEN"
+
+---
+# Datasource: Beyla via Thanos / Prometheus OCP
+# Importante: beyla-metrics expone /metrics, pero NO es una API Prometheus.
+# Por eso Grafana debe consultar Thanos/Prometheus, no el Service directo de Beyla.
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDatasource
+metadata:
+  name: prometheus-beyla
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
+
+  datasource:
+    uid: Prometheus-Beyla
+    name: Prometheus-Beyla
+    type: prometheus
+    access: proxy
+    url: https://thanos-querier.openshift-monitoring.svc.cluster.local:9091
+    editable: true
+
+    jsonData:
+      timeInterval: 30s
+      tlsSkipVerify: true
+      httpHeaderName1: Authorization
+
+    secureJsonData:
+      httpHeaderValue1: "Bearer REPLACE_PROM_TOKEN"
