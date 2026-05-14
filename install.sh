@@ -131,6 +131,33 @@ oc wait --for=condition=Ready pod \
 
 echo "[8/8] Grafana datasources, dashboards and traffic generators"
 
+echo "[INFO] Creating Grafana ServiceAccount for Prometheus/Thanos access"
+
+oc create sa grafana-sa -n grafana --dry-run=client -o yaml | oc apply -f -
+
+echo "[INFO] Granting cluster-monitoring-view to grafana-sa"
+
+oc adm policy add-cluster-role-to-user cluster-monitoring-view \
+  system:serviceaccount:grafana:grafana-sa
+
+echo "[INFO] Generating Prometheus token for grafana-sa"
+
+PROM_TOKEN="$(oc create token grafana-sa -n grafana --duration=8760h)"
+
+if [ -z "${PROM_TOKEN}" ]; then
+  echo "[ERROR] Could not generate Prometheus token for grafana-sa" >&2
+  exit 1
+fi
+
+echo "[INFO] Injecting Prometheus token into Grafana datasource manifest"
+
+if grep -q "REPLACE_PROM_TOKEN" 04-grafana/03-grafana-datasources.yaml; then
+  sed -i "s|REPLACE_PROM_TOKEN|${PROM_TOKEN}|g" 04-grafana/03-grafana-datasources.yaml
+else
+  echo "[WARN] REPLACE_PROM_TOKEN placeholder not found in 04-grafana/03-grafana-datasources.yaml"
+  echo "[WARN] Make sure your datasource has a valid Bearer token configured"
+fi
+
 oc apply -f 04-grafana/03-grafana-datasources.yaml
 oc apply -f 04-grafana/04-grafana-dashboards.yaml
 oc apply -f 04-grafana/05-traffic-generators.yaml
