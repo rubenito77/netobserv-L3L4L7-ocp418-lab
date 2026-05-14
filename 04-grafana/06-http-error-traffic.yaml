@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-generator-ok
+  namespace: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-generator-ok
+  template:
+    metadata:
+      labels:
+        app: traffic-generator-ok
+    spec:
+      containers:
+      - name: generator
+        image: curlimages/curl:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Starting HTTP 200 traffic generator"
+          while true; do
+            curl -sk https://$(oc get route demo-api -n demo-app -o jsonpath='{.spec.host}')/get > /dev/null
+            sleep 1
+          done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-generator-500
+  namespace: demo-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-generator-500
+  template:
+    metadata:
+      labels:
+        app: traffic-generator-500
+    spec:
+      containers:
+      - name: generator
+        image: curlimages/curl:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Starting HTTP 500 traffic generator"
+          while true; do
+            curl -sk https://$(oc get route demo-api -n demo-app -o jsonpath='{.spec.host}')/status/500 > /dev/null
+            sleep 2
+          done
