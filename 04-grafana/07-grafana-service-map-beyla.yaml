@@ -1,0 +1,183 @@
+---
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: beyla-service-map-lab
+  namespace: grafana
+spec:
+  instanceSelector:
+    matchLabels:
+      dashboards: grafana
+  json: |
+    {
+      "title": "Service Map - Beyla eBPF LAB",
+      "uid": "beyla-service-map-lab",
+      "tags": ["beyla", "service-map", "ebpf", "openshift", "lab"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "30s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Servicios detectados por Beyla",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "targets": [
+            {
+              "expr": "count(count by (service_name) (http_server_request_body_size_bytes_count{k8s_namespace_name=~\"demo-app\"}))",
+              "legendFormat": "Servicios"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "title": "Request Rate Global",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_body_size_bytes_count{k8s_namespace_name=~\"demo-app\"}[5m]))",
+              "legendFormat": "req/s"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Errores HTTP 5xx",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 0.01},
+                  {"color": "red", "value": 0.05}
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_body_size_bytes_count{k8s_namespace_name=~\"demo-app\",http_response_status_code=~\"5..\"}[5m]))",
+              "legendFormat": "5xx"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "title": "Errores HTTP 4xx",
+          "type": "stat",
+          "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "green", "value": null},
+                  {"color": "yellow", "value": 0.01},
+                  {"color": "red", "value": 0.05}
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_body_size_bytes_count{k8s_namespace_name=~\"demo-app\",http_response_status_code=~\"4..\"}[5m]))",
+              "legendFormat": "4xx"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "title": "Request Rate por endpoint HTTP",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_body_size_bytes_count{k8s_namespace_name=~\"demo-app\",service_name=\"demo-api\"}[5m])) by (http_route,http_response_status_code)",
+              "legendFormat": "{{http_route}} - {{http_response_status_code}}"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Request Rate por código HTTP",
+          "type": "timeseries",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_body_size_bytes_count{k8s_namespace_name=~\"demo-app\",service_name=\"demo-api\"}[5m])) by (http_response_status_code)",
+              "legendFormat": "HTTP {{http_response_status_code}}"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "title": "Top endpoints por tráfico HTTP",
+          "type": "bargauge",
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "fieldConfig": {
+            "defaults": {
+              "unit": "reqps"
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "topk(10, sum(rate(http_server_request_body_size_bytes_count{k8s_namespace_name=~\"demo-app\",service_name=\"demo-api\"}[5m])) by (http_route))",
+              "legendFormat": "{{http_route}}"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "title": "Service Map simplificado",
+          "type": "table",
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+          "datasource": {"type": "prometheus", "uid": "Prometheus-Beyla"},
+          "targets": [
+            {
+              "expr": "sum(rate(http_server_request_body_size_bytes_count{k8s_namespace_name=~\"demo-app\"}[5m])) by (k8s_namespace_name,service_name,http_route,http_response_status_code)",
+              "format": "table",
+              "instant": true,
+              "legendFormat": "__auto"
+            }
+          ]
+        }
+      ]
+    }
