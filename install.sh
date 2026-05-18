@@ -36,6 +36,46 @@ wait_for_deployment() {
   return 1
 }
 
+wait_for_ready_pod() {
+  local namespace="$1"
+  local selector="$2"
+  local label="$3"
+
+  echo "[INFO] Waiting for any Ready pod: ${label}"
+
+  for i in $(seq 1 60); do
+    if oc get pods -n "${namespace}" -l "${selector}" --no-headers 2>/dev/null | grep -q "1/1.*Running"; then
+      oc get pods -n "${namespace}" -l "${selector}"
+      return 0
+    fi
+
+    sleep 5
+  done
+
+  echo "[ERROR] Timeout waiting for Ready pod: ${label}" >&2
+  oc get pods -n "${namespace}" -l "${selector}" || true
+  return 1
+}
+
+scale_down_not_ready_grafana_rs() {
+  echo "[INFO] Scaling old/not-ready Grafana ReplicaSets to zero if needed"
+
+  local rs_list
+  rs_list="$(oc get rs -n grafana --no-headers 2>/dev/null | grep '^grafana-deployment' || true)"
+
+  if [ -z "${rs_list}" ]; then
+    echo "[INFO] No Grafana ReplicaSets found yet"
+    return 0
+  fi
+
+  echo "${rs_list}" | while read -r rs desired current ready age; do
+    if [ "${ready}" = "0" ]; then
+      echo "[INFO] Scaling down not-ready ReplicaSet ${rs}"
+      oc scale rs "${rs}" -n grafana --replicas=0 || true
+    fi
+  done
+}
+
 echo "[1/8] Namespaces"
 oc apply -f 00-namespaces/namespaces.yaml
 
@@ -90,9 +130,11 @@ oc delete pod -n grafana \
   -l app.kubernetes.io/name=grafana-operator \
   --ignore-not-found || true
 
+wait_for_ready_pod grafana "app.kubernetes.io/name=grafana-operator" "Grafana Operator"
+
 wait_for_csv grafana grafana-operator
 
-./scripts/00-create-grafana-token-secret.sh
+bash ./scripts/00-create-grafana-token-secret.sh
 
 oc apply -f 04-grafana/02-grafana-instance.yaml
 
@@ -116,18 +158,12 @@ oc patch deploy grafana-deployment \
     }
   ]' || true
 
-echo "[INFO] Restarting Grafana pod"
+sleep 10
+scale_down_not_ready_grafana_rs
 
-oc delete pod -n grafana \
-  -l app=grafana \
-  --ignore-not-found || true
+echo "[INFO] Waiting for any Grafana pod to become Ready"
 
-echo "[INFO] Waiting for Grafana pod to become Ready"
-
-oc wait --for=condition=Ready pod \
-  -l app=grafana \
-  -n grafana \
-  --timeout=300s
+wait_for_ready_pod grafana "app=grafana" "Grafana instance"
 
 echo "[8/8] Grafana datasources, dashboards and traffic generators"
 
@@ -149,9 +185,16 @@ if [ -z "${PROM_TOKEN}" ]; then
   exit 1
 fi
 
+echo "[INFO] Restoring datasource placeholder if backup exists"
+
+if [ -f 04-grafana/03-grafana-datasources.yaml.bak ]; then
+  cp 04-grafana/03-grafana-datasources.yaml.bak 04-grafana/03-grafana-datasources.yaml
+fi
+
 echo "[INFO] Injecting Prometheus token into Grafana datasource manifest"
 
 if grep -q "REPLACE_PROM_TOKEN" 04-grafana/03-grafana-datasources.yaml; then
+  cp 04-grafana/03-grafana-datasources.yaml 04-grafana/03-grafana-datasources.yaml.bak
   sed -i "s|REPLACE_PROM_TOKEN|${PROM_TOKEN}|g" 04-grafana/03-grafana-datasources.yaml
 else
   echo "[WARN] REPLACE_PROM_TOKEN placeholder not found in 04-grafana/03-grafana-datasources.yaml"
@@ -169,4 +212,17 @@ echo "[INFO] Validating Grafana resources"
 
 oc get grafana,grafanadatasource,grafanadashboard -n grafana
 
+GRAFANA_URL="https://$(oc get route grafana -n grafana -o jsonpath='{.spec.host}' 2>/dev/null || true)"
+GRAFANA_USER="admin"
+GRAFANA_PASSWORD="grafana-lab"
+
+echo ""
+echo "============================================================"
+echo " Grafana Access"
+echo "============================================================"
+echo " URL      : ${GRAFANA_URL}"
+echo " User     : ${GRAFANA_USER}"
+echo " Password : ${GRAFANA_PASSWORD}"
+echo "============================================================"
+echo ""
 echo "[OK] Installation requested. Validate with: ./scripts/validate.sh"
